@@ -12,7 +12,7 @@ type QuicConn struct {
 	stream quic.Stream
 }
 
-func NewConn(sess quic.Session) (net.Conn, error) {
+func NewQuicConn(sess quic.Session) (net.Conn, error) {
 	stream, err := sess.OpenStreamSync()
 	if err != nil {
 		return nil, err
@@ -43,14 +43,14 @@ func (c *QuicConn) RemoteAddr() net.Addr {
 	return c.sess.RemoteAddr()
 }
 
-func (c *QuicConn) SetDeadLine(t time.Time) error {
-	return c.stream.SetDeadLine(t)
+func (c *QuicConn) SetDeadline(t time.Time) error {
+	return c.stream.SetDeadline(t)
 }
 
-func (c *QuicConn) SetReadDeadLine(t time.Time) error {
-	return c.stream.SetReadDeadLine(t)
+func (c *QuicConn) SetReadDeadline(t time.Time) error {
+	return c.stream.SetReadDeadline(t)
 }
 
-func (c *QuicConn) SetWriteDeadLine(t time.Time) error {
-	return c.stream.SetWriteDeadLine(t)
+func (c *QuicConn) SetWriteDeadline(t time.Time) error {
+	return c.stream.SetWriteDeadline(t)
 }

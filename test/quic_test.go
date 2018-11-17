@@ -1,4 +1,4 @@
-package grpcquic
+package test
 
 import (
 	"context"
@@ -7,12 +7,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/gfanton/grpc-quic/proto/hello"
 	qgrpc "github.com/ivanszl/grpc-quic"
+	"github.com/ivanszl/grpc-quic/transports"
+	quic "github.com/lucas-clemente/quic-go"
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/grpc"
 )
@@ -22,10 +25,11 @@ type Hello struct{}
 func (h *Hello) SayHello(ctx context.Context, in *hello.HelloRequest) (*hello.HelloReply, error) {
 	rep := new(hello.HelloReply)
 	rep.Message = "Hello " + in.GetName()
+	fmt.Println(in.GetName())
 	return rep, nil
 }
 
-func generateTLSConfig() (*tls.Config, error) {
+func generateTLSConfig() (*tls.Certificate, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		return nil, err
@@ -44,10 +48,10 @@ func generateTLSConfig() (*tls.Config, error) {
 		return nil, err
 	}
 
-	return &tls.Config{Certificates: []tls.Certificate{tlsCert}}, nil
+	return &tlsCert, nil
 }
 
-func testDial(t *testing.T, target string) {
+func TestDialUDP(t *testing.T) {
 	var (
 		client *grpc.ClientConn
 		server *grpc.Server
@@ -63,13 +67,18 @@ func testDial(t *testing.T, target string) {
 		}
 	}()
 
+	conf := &quic.Config{
+		KeepAlive: true,
+	}
+	target := "127.0.0.1:5847"
+
+	cert, err := generateTLSConfig()
+
 	Convey("Setup server", t, func(c C) {
-		tlsConf, err := generateTLSConfig()
+		creds := transports.NewServerTLSFromCert(*cert)
+		l, err := qgrpc.NewListener(target, conf, creds)
 		So(err, ShouldBeNil)
-
-		server, l, err := qgrpc.NewServer(target, opts.TLSConfig(tlsConf))
-		So(err, ShouldBeNil)
-
+		server = grpc.NewServer(grpc.Creds(creds))
 		hello.RegisterGreeterServer(server, &Hello{})
 
 		go func() {
@@ -79,14 +88,15 @@ func testDial(t *testing.T, target string) {
 	})
 
 	Convey("Setup client", t, func() {
-		tlsConf := &tls.Config{InsecureSkipVerify: true}
+		creds := transports.NewClientTLSSkipVerify()
+		client, err = grpc.Dial(target,
+			grpc.WithDialer(qgrpc.NewQuicDialer(conf, creds)),
+			grpc.WithTransportCredentials(creds))
 
-		// Take a random port to listen from udp server
-		client, err = qgrpc.Dial(target, opts.WithTLSConfig(tlsConf))
 		So(err, ShouldBeNil)
 	})
 
-	Convey("Test basic dail", t, func() {
+	Convey("Test basic dial", t, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
@@ -98,8 +108,4 @@ func testDial(t *testing.T, target string) {
 		So(err, ShouldBeNil)
 		So(rep.GetMessage(), ShouldEqual, "Hello World")
 	})
-}
-
-func TestDialUDP(t *testing.T) {
-	testDial(t, "127.0.0.1:5847")
 }
